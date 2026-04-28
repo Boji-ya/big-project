@@ -28,13 +28,16 @@ prev_smoothed_landmarks = None
 
 def apply_ema_smoothing(current_landmarks, alpha=0.5):
     global prev_smoothed_landmarks
-    
+    smoothed_landmarks = []
+
     # 如果是第一幀，就直接回傳當前座標並存起來
     if prev_smoothed_landmarks is None:
-        prev_smoothed_landmarks = current_landmarks
-        return current_landmarks
+        for p in current_landmarks:
+            smoothed_landmarks.append(SmoothedLandmark(p.x, p.y, p.z))
+        prev_smoothed_landmarks = smoothed_landmarks
+        return smoothed_landmarks
         
-    smoothed_landmarks = []
+
     
     # 把 21 個節點拿來做平滑計算
     for i in range(len(current_landmarks)):
@@ -75,7 +78,8 @@ def detect_gesture(landmarks, history):
 
     if_good= (landmarks[4].y<landmarks[3].y) #拇指指尖比根部高
 
-
+    #判斷大拇指有沒有張開->拇指指尖到小指根部的距離>拇指根部到小指根部的距離
+    is_thumb_open = get_distance(landmarks[17], landmarks[4]) > get_distance(landmarks[2], landmarks[17])
     # ==========================================
     # 靜態手勢
     # ==========================================
@@ -123,7 +127,7 @@ def detect_gesture(landmarks, history):
                 
             return "Open Palm (Tracking...)" # 移動量還不夠大時的顯示
      #跑步   
-    elif not is_open_palm:
+    elif not is_open_palm and not is_thumb_open :
        # 1. 每一幀都把最新的 Y 座標存進去
         history.append(landmarks[0].y)
         
@@ -168,7 +172,7 @@ def draw_and_get_gesture(image, result):
        for pt in px_pts: cv2.circle(image, pt, 4, (0, 0, 255), -1)
 
         # 寫出手勢名稱
-       gesture = detect_gesture(hand_lms,wrist_history)
+       gesture = detect_gesture(smoothed_lms,wrist_history)
 
        cv2.putText(image, f"{handedness[0].category_name}: {gesture}", 
                     (px_pts[0][0] - 20, px_pts[0][1] - 20), 
