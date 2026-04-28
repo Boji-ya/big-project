@@ -15,9 +15,6 @@ CONNECTIONS = [(0,1),(1,2),(2,3),(3,4),(0,5),(5,6),(6,7),(7,8),(5,9),(9,10),(10,
 wrist_history=[]
 
 
-
-
-
 # 2. 手勢判斷邏輯 
 def get_distance(p1, p2):
     return math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2 + (p1.z - p2.z)**2) #求距離公式
@@ -35,6 +32,8 @@ def detect_gesture(landmarks, history):
 
     is_open_palm = is_index_ext and is_mid_ext and is_ring_ext and is_pinky_ext #有沒有張開手掌
 
+    if_good= (landmarks[4].y<landmarks[3].y) #拇指指尖比根部高
+
     # ==========================================
     # 靜態手勢
     # ==========================================
@@ -49,10 +48,10 @@ def detect_gesture(landmarks, history):
         history.clear()
         return "V-Sign (Flashbang)"
 
-    # --- 3：✊ 握拳 ---
-    elif not is_index_ext and not is_mid_ext and not is_ring_ext and not is_pinky_ext: #全都彎曲
+    # --- 3：比讚 ---
+    elif (not is_open_palm) and if_good: #全都彎曲
         history.clear()
-        return "Fist (Stop/Grab)"
+        return "Grab"
 
 
     # ==========================================
@@ -80,6 +79,19 @@ def detect_gesture(landmarks, history):
                 return "<--- Swipe Left"
                 
             return "Open Palm (Tracking...)" # 移動量還不夠大時的顯示
+     #跑步   
+    elif not is_open_palm:
+        if len(history) == 0:
+            history.append(landmarks[0].y)
+            return "Run(Ready...)"
+        else:
+            start_y = history[0]
+            current_y= landmarks[0].y
+            delta_y = current_y - start_y
+
+            if abs(delta_y) > 0.08:
+                history.clear()
+                return "Running !!!"
 
     # 如果什麼手勢都不是
     else:

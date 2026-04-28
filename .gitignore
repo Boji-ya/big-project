@@ -1,0 +1,4 @@
+*.task
+model/
+__pycache__/
+*.pyc
