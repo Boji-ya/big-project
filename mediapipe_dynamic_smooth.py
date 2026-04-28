@@ -64,60 +64,68 @@ def get_distance(p1, p2):
     return math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2 + (p1.z - p2.z)**2) #求距離公式
 
 def detect_gesture(landmarks, history):
-    # 1. 計算基本距離
     palm_size = get_distance(landmarks[0], landmarks[5])
+
+    # ==========================================
+    # 1. 狀態簡化：計算有幾根手指伸直 (食、中、無、小)
+    # ==========================================
+    tips = [8, 12, 16, 20] # 指尖
+    pips = [6, 10, 14, 18] # 第二指節 (這能讓彎曲判定變超準！)
+    
+    fingers_ext = []
+    for tip, pip in zip(tips, pips):
+        # 只要指尖離手腕的距離 > 第二指節離手腕的距離，就是伸直
+        is_ext = get_distance(landmarks[tip], landmarks[0]) > get_distance(landmarks[pip], landmarks[0])
+        fingers_ext.append(is_ext)
+        
+    extended_count = sum(fingers_ext) # 算出伸直的手指數量 (0 ~ 4)
+
+    # ==========================================
+    # 2. 定義三大核心狀態 (清楚明瞭，不再打架)
+    # ==========================================
+    # 大拇指有沒有向外張開 (對角線距離)
+    thumb_index_dist = get_distance(landmarks[4], landmarks[8])
+    palm_size = get_distance(landmarks[0], landmarks[5])
+
+    is_thumb_open = thumb_index_dist > palm_size * 0.6
+
+    is_fist = (extended_count == 0) and not is_thumb_open  # 握拳：四指全彎 + 拇指收起
+    is_thumbs_up = (extended_count == 0) and is_thumb_open # 比讚：四指全彎 + 拇指伸出
+    is_open_palm = (extended_count == 4)                   # 全開：四指全伸直
+
+
+    # ==========================================
+    # 3. 靜態手勢判斷
+    # ==========================================
     tip_dist = get_distance(landmarks[4], landmarks[8])
-
-    # 2. 判斷四指是否伸直
-    is_index_ext = get_distance(landmarks[8], landmarks[0]) > get_distance(landmarks[5], landmarks[0])  #食指伸直
-    is_mid_ext = get_distance(landmarks[12], landmarks[0]) > get_distance(landmarks[9], landmarks[0]) #中指伸直
-    is_ring_ext = get_distance(landmarks[16], landmarks[0]) > get_distance(landmarks[13], landmarks[0]) #無名指伸直
-    is_pinky_ext = get_distance(landmarks[20], landmarks[0]) > get_distance(landmarks[17], landmarks[0]) #小指伸直
-
-    is_open_palm = is_index_ext and is_mid_ext and is_ring_ext and is_pinky_ext #有沒有張開手掌
-
-    if_good= (landmarks[4].y<landmarks[3].y) #拇指指尖比根部高
-
-    #判斷大拇指有沒有張開->拇指指尖到小指根部的距離>拇指根部到小指根部的距離
-    is_thumb_open = get_distance(landmarks[17], landmarks[4]) > get_distance(landmarks[2], landmarks[17])
-    # ==========================================
-    # 靜態手勢
-    # ==========================================
-
-    # --- 1👌 OK 手勢 -
-    if tip_dist < palm_size * 0.3 and is_mid_ext and is_ring_ext and is_pinky_ext: #拇指 食指 碰在一起 且另3指伸直
+    
+    # --- 1👌 OK 手勢 --- (只有食指彎曲，另外三指伸直)
+    if tip_dist < palm_size * 0.3 and extended_count == 3 and not fingers_ext[0]: 
         history.clear() 
         return "OK (UV Light)"
 
-    # --- 2✌️  YA ---
-    elif is_index_ext and is_mid_ext and not is_ring_ext and not is_pinky_ext: #食指 中指伸直 其他彎曲
+    # --- 2✌️  YA --- (食、中伸直，無、小彎曲)
+    elif fingers_ext[0] and fingers_ext[1] and not fingers_ext[2] and not fingers_ext[3]:
         history.clear()
         return "V-Sign (Flashbang)"
 
-    # --- 3：比讚 ---
-    elif (not is_open_palm) and if_good: #全都彎曲
+    # --- 3👍 比讚 (抓取道具) ---
+    elif is_thumbs_up: 
         history.clear()
-        return "Grab"
+        return "Good (Grab Item)"
 
 
     # ==========================================
-    # 動態手勢
+    # 4. 動態手勢判斷
+    # ==========================================
     
-    # 手掌張開
+    # --- 揮手 (Swipe) ---
     elif is_open_palm:
-
         history.append(landmarks[0].x)
-
-        #如果紀錄太多的話 刪掉最前面的
-        if len(history) > 10:
-            history.pop(0)
-
+        if len(history) > 10: history.pop(0)
+            
         if len(history) == 10:
-            start_x = history[0]      # 10 幀前的 X
-            current_x = history[-1]   # 現在最新的 X
-            delta_x = current_x - start_x
-
-            # 判斷向右或向左
+            delta_x = history[-1] - history[0]
             if delta_x > 0.15:
                 history.clear() 
                 return "Swipe Right --->"
@@ -125,29 +133,25 @@ def detect_gesture(landmarks, history):
                 history.clear()
                 return "<--- Swipe Left"
                 
-            return "Open Palm (Tracking...)" # 移動量還不夠大時的顯示
-     #跑步   
-    elif not is_open_palm and not is_thumb_open :
-       # 1. 每一幀都把最新的 Y 座標存進去
-        history.append(landmarks[0].y)
+        return "Open Palm (Tracking...)"
         
-        # 2. 跑步比較快 記過去 5 幀就好
-        if len(history) > 5:
-            history.pop(0)
+    # --- 跑步 (Run) ---
+    elif is_fist:  # 🌟 這裡直接套用極度嚴格的握拳狀態！
+        history.append(landmarks[0].y)
+        if len(history) > 5: history.pop(0)
             
         if len(history) == 5:
-            start_y = history[0]
-            current_y = history[-1]
-            delta_y = current_y - start_y
+            # 引入我們討論過的「總移動軌跡」，取代頭尾相減，防止抵銷效應
+            total_movement = 0
+            for i in range(1, 5):
+                total_movement += abs(history[i] - history[i-1])
 
-            
-            if abs(delta_y) > 0.08:
-                history.clear()
+            if total_movement > (palm_size * 0.6):
+                # 注意：這裡不 clear()，讓跑步訊號可以連續觸發
                 return "Running !!!"
                 
         return "Run(Ready...)"
 
-    # 如果什麼手勢都不是
     else:
         history.clear() 
         return "None"
