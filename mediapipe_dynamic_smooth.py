@@ -122,20 +122,28 @@ def detect_gesture(landmarks, history):
     # --- 揮手 (Swipe) ---
     elif is_open_palm:
         history.append(landmarks[0].x)
-        if len(history) > 10: history.pop(0)
-            
-        if len(history) == 10:
-            delta_x = history[-1] - history[0]
-            if delta_x > 0.15:
-                history.clear() 
-                return "Swipe Right --->"
-            elif delta_x < -0.15:
-                history.clear()
-                return "<--- Swipe Left"
-                
-        return "Open Palm (Tracking...)"
+        if len(history) > 5:
+            history.pop(0)
+
+        if len(history) >= 2:
+            dx = history[-1] - history[-2]  # 每幀移動量
+
+            # 小抖動不算
+            if abs(dx) < 0.01:
+                return "Open Palm (Idle)"
+
+            # 放大控制 讓鏡頭位移較明顯
+            speed = dx * 10
+
+            if speed > 0:
+                return f"Turn Left ({speed:.2f})"
+            else:
+                return f"Turn Right ({abs(speed):.2f})"
+
+        return "Open Palm"
         
     # --- 跑步 (Run) ---
+
     elif is_fist:  #握拳且拇指收起
         history.append(landmarks[0].y)
         if len(history) > 5: history.pop(0)
