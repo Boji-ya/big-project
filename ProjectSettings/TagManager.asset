@@ -5,11 +5,13 @@ TagManager:
   serializedVersion: 3
   tags:
   - Pickable
+  - Mole
+  - MoleMachine
   layers:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - UVSymbol
   - Water
   - UI
   - 
