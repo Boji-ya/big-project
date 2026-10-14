@@ -80,29 +80,31 @@ public class FlashlightBattery : MonoBehaviour
     }
 
 
-    // 撿到電池時呼叫這個
     public void AddBattery()
     {
-        // 已經滿電
+        TryAddBattery();
+    }
+
+    public bool TryAddBattery()
+    {
         if (currentBattery >= maxBattery)
         {
             Debug.Log("手電筒電量已滿！");
-            return;
+            return false;
         }
 
-        // 增加一格
-        currentBattery++;
+        currentBattery = Mathf.Min(maxBattery, currentBattery + 1);
 
-        Debug.Log("補充電池，目前電量：" + currentBattery);
+        // 補電後重新計算下一次消耗時間
+        timer = 0f;
 
-        // 更新 UI
         UpdateBatteryUI();
 
-        // 有電就重新開啟手電筒
         if (currentBattery > 0 && flashlightLight != null)
-        {
             flashlightLight.enabled = true;
-        }
+
+        Debug.Log("補充電池，目前電量：" + currentBattery);
+        return true;
     }
 
 

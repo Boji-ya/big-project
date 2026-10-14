@@ -384,5 +384,51 @@ public class backpack : MonoBehaviour
         return 0;
     }
 
+    // =========================
+    // 消耗指定物品 1 個，不改變目前選中的 Slot
+    // =========================
+    public bool UseItemByName(string itemName)
+    {
+        for (int i = 0; i < itemNames.Length; i++)
+        {
+            if (itemNames[i] == itemName && itemCounts[i] > 0)
+            {
+                itemCounts[i]--;
+
+                Debug.Log(
+                    "使用物品：" + itemName +
+                    "，剩餘：" + itemCounts[i]
+                );
+
+                // 物品用完了
+                if (itemCounts[i] <= 0)
+                {
+                    itemNames[i] = "";
+
+                    if (i < itemIcons.Length && itemIcons[i] != null)
+                    {
+                        itemIcons[i].sprite = null;
+                        itemIcons[i].gameObject.SetActive(false);
+                    }
+
+                    if (i < countTexts.Length && countTexts[i] != null)
+                    {
+                        countTexts[i].text = "";
+                        countTexts[i].gameObject.SetActive(false);
+                    }
+                }
+                else
+                {
+                    UpdateSlotUI(i);
+                }
+
+                return true;
+            }
+        }
+
+        Debug.Log("背包沒有可使用的物品：" + itemName);
+        return false;
+    }
+
 
 }

@@ -53,8 +53,10 @@ public class WhackAMoleManager : MonoBehaviour
     void Start()
     {
         isGameActive = false;
+        currentScore = 0;
+        timeRemaining = gameDuration;
 
-        StartGame();
+        UpdateUI();
     }
 
 

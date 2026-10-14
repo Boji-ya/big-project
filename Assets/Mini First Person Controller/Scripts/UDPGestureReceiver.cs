@@ -54,6 +54,8 @@ public class UDPGestureReceiver : MonoBehaviour
     public GameObject flashlight_;
     public GameObject flashlight_uv_copy;
 
+    public FlashlightBattery flashlightBattery;
+
     [Header("Inventory")]
     public backpack playerBackpack;
     public int currentSlot = 1;
@@ -509,339 +511,279 @@ public class UDPGestureReceiver : MonoBehaviour
     // INTERACTION / PICKUP
     // =========================================================
 
-    void TryInteract()
+
+void TryInteract()
+{
+    if (Time.time - lastInteractTime < interactCooldown)
+        return;
+
+    // =========================================
+    // 0. 使用背包中的電池
+    // 只有選中 battery 時，比讚才會優先補電
+    // =========================================
+    if (playerBackpack != null &&
+        playerBackpack.GetSelectedItem() == "battery")
     {
-        if (Time.time - lastInteractTime <
-            interactCooldown)
+        if (playerBackpack.GetItemCount("battery") <= 0)
         {
+            Debug.Log("背包沒有電池！");
             return;
         }
 
+        if (flashlightBattery == null)
+        {
+            Debug.LogWarning("尚未指定 FlashlightBattery 元件！");
+            return;
+        }
 
-        if (playerCamera == null)
+        if (flashlightBattery.currentBattery >=
+            flashlightBattery.maxBattery)
+        {
+            Debug.Log("白光手電筒電量已滿，不消耗電池！");
+            return;
+        }
+
+        // 先確認補電成功，再消耗一顆電池
+        if (flashlightBattery.TryAddBattery())
+        {
+            playerBackpack.UseItemByName("battery");
+            lastInteractTime = Time.time;
+        }
+
+        return;
+    }
+
+    // =========================================
+    // 1. 確認玩家攝影機
+    // =========================================
+    if (playerCamera == null)
+    {
+        Debug.LogWarning("playerCamera not assigned.");
+        return;
+    }
+
+    Vector3 origin = playerCamera.transform.position;
+    Vector3 direction = playerCamera.transform.forward;
+
+    Ray ray = new Ray(origin, direction);
+    RaycastHit hit;
+
+    Debug.DrawRay(origin, direction * pickupRange, Color.red, 2f);
+
+    if (!Physics.Raycast(ray, out hit, pickupRange))
+    {
+        Debug.Log("揮空了，眼前沒東西。");
+        return;
+    }
+
+    // =========================================
+    // 2. GENERATOR
+    // =========================================
+    GeneratorInteract generator =
+        hit.collider.GetComponentInParent<GeneratorInteract>();
+
+    if (generator != null)
+    {
+        Debug.Log("GRAB → GENERATOR");
+        generator.Activate();
+
+        lastInteractTime = Time.time;
+        return;
+    }
+
+    // =========================================
+    // 3. 打地鼠機
+    // =========================================
+    if (hit.collider.CompareTag("MoleMachine"))
+    {
+        if (moleManager != null && !moleManager.isGameActive)
+        {
+            if (playerBackpack == null)
+            {
+                Debug.LogWarning("沒有指定 Player Backpack！");
+                return;
+            }
+
+            if (playerBackpack.GetSelectedItem() != "coin")
+            {
+                Debug.Log("請先在背包選擇 coin！");
+                return;
+            }
+
+            if (playerBackpack.GetSelectedItemCount() <= 0)
+            {
+                Debug.Log("沒有 coin，無法開始打地鼠！");
+                return;
+            }
+
+            if (!playerBackpack.UseSelectedItem())
+            {
+                Debug.Log("硬幣使用失敗！");
+                return;
+            }
+
+            Debug.Log("已使用 1 枚 coin，開始打地鼠遊戲！");
+            moleManager.StartGame();
+        }
+
+        lastInteractTime = Time.time;
+        return;
+    }
+
+    // =========================================
+    // 4. 火雞地鼠
+    // =========================================
+    if (hit.collider.CompareTag("Mole"))
+    {
+        TurkeyMole mole =
+            hit.collider.GetComponentInParent<TurkeyMole>();
+
+        if (mole != null)
+        {
+            Debug.Log("比讚打中火雞！");
+            mole.OnHitByPlayer();
+
+            lastInteractTime = Time.time;
+            return;
+        }
+    }
+
+    // =========================================
+    // 5. 冷凍庫門
+    // =========================================
+    RotatingDoor door =
+        hit.collider.GetComponentInParent<RotatingDoor>();
+
+    if (door != null)
+    {
+        Debug.Log("比讚 → 冷凍庫門");
+        door.OpenFromGesture();
+
+        lastInteractTime = Time.time;
+        return;
+    }
+
+    // =========================================
+    // 6. 電箱
+    // =========================================
+    FuseBoxController fuseBox =
+        hit.collider.GetComponentInParent<FuseBoxController>();
+
+    if (fuseBox != null)
+    {
+        Debug.Log("比讚 → 電箱");
+        fuseBox.ActivateFuseBox();
+
+        lastInteractTime = Time.time;
+        return;
+    }
+
+    // =========================================
+    // 7. 冷凍庫拉桿
+    // =========================================
+    lever_controller lever =
+        hit.collider.GetComponent<lever_controller>();
+
+    if (lever == null)
+    {
+        lever = hit.collider.GetComponentInParent<lever_controller>();
+    }
+
+    if (lever != null)
+    {
+        Debug.Log("操作冷凍庫拉桿：" + lever.gameObject.name);
+        lever.ToggleLever();
+
+        lastInteractTime = Time.time;
+        return;
+    }
+
+    // =========================================
+    // 8. 大門拉桿
+    // =========================================
+    GateLeverController gateLever =
+        hit.collider.GetComponent<GateLeverController>();
+
+    if (gateLever == null)
+    {
+        gateLever =
+            hit.collider.GetComponentInParent<GateLeverController>();
+    }
+
+    if (gateLever != null)
+    {
+        Debug.Log("操作大門拉桿：" + gateLever.gameObject.name);
+        gateLever.ToggleLever();
+
+        lastInteractTime = Time.time;
+        return;
+    }
+
+    // =========================================
+    // 9. 撿取物品
+    // =========================================
+    if (hit.collider.CompareTag("Pickable"))
+    {
+        backpackitem item =
+            hit.collider.GetComponentInParent<backpackitem>();
+
+        if (item == null)
         {
             Debug.LogWarning(
-                "playerCamera not assigned."
+                "此 Pickable 物件沒有 backpackitem：" +
+                hit.collider.gameObject.name
             );
-
             return;
         }
 
+        if (playerBackpack == null)
+        {
+            Debug.LogWarning("Player Backpack is not assigned!");
+            return;
+        }
 
-        Vector3 origin =
-            playerCamera.transform.position;
+        Debug.Log("準備加入背包：" + item.itemName);
 
-        Vector3 direction =
-            playerCamera.transform.forward;
-
-
-        Ray ray =
-            new Ray(origin, direction);
-
-        RaycastHit hit;
-
-
-        Debug.DrawRay(
-            origin,
-            direction * pickupRange,
-            Color.red,
-            2f
+        bool added = playerBackpack.AddItem(
+            item.itemName,
+            item.itemIcon
         );
 
-
-        if (Physics.Raycast(
-            ray,
-            out hit,
-            pickupRange))
+        if (added)
         {
-            // =================================================
-            // 1. GENERATOR
-            // =================================================
+            Debug.Log("撿起物品：" + item.itemName);
 
-            GeneratorInteract generator =
-                hit.collider.GetComponentInParent<GeneratorInteract>();
-
-
-            if (generator != null)
+            // 撿到紫光手電筒時，切換手電筒
+            if (item.itemName == "flashlight")
             {
-                Debug.Log(
-                    "GRAB → GENERATOR"
-                );
+                if (flashlight_ != null)
+                    flashlight_.SetActive(false);
 
+                if (flashlight_uv_copy != null)
+                    flashlight_uv_copy.SetActive(true);
 
-                generator.Activate();
+                playerBackpack.SelectSlot(1);
 
-
-                lastInteractTime =
-                    Time.time;
-
-
-                return;
+                Debug.Log("已切換到紫光手電筒！");
             }
 
-            // =================================================
-            // 2. 打地鼠機
-            // =================================================
-
-            if (hit.collider.CompareTag("MoleMachine"))
-            {
-                if (moleManager != null && !moleManager.isGameActive)
-                {
-                    // 必須有背包
-                    if (playerBackpack == null)
-                    {
-                        Debug.LogWarning("沒有指定 Player Backpack！");
-                        return;
-                    }
-
-                    // 必須選擇 coin
-                    if (playerBackpack.GetSelectedItem() != "coin")
-                    {
-                        Debug.Log("請先在背包選擇 coin！");
-                        return;
-                    }
-
-                    // 必須至少有 1 枚 coin
-                    if (playerBackpack.GetSelectedItemCount() <= 0)
-                    {
-                        Debug.Log(" 沒有 coin，無法開始打地鼠！");
-                        return;
-                    }
-
-                    // 消耗 1 枚 coin
-                    playerBackpack.UseSelectedItem();
-
-                    Debug.Log("已使用 1 枚 coin，開始打地鼠遊戲！");
-
-                    // 開始遊戲
-                    moleManager.StartGame();
-                }
-
-                lastInteractTime = Time.time;
-                return;
-            }
-            // =================================================
-            // 3. TURKEY MOLE GAME
-            // =================================================
-
-            if (hit.collider.CompareTag("Mole"))
-            {
-                TurkeyMole mole =
-                    hit.collider.GetComponentInParent<TurkeyMole>();
-
-
-                if (mole != null)
-                {
-                    Debug.Log(
-                        "比讚打中火雞！"
-                    );
-
-
-                    mole.OnHitByPlayer();
-
-                    return;
-                }
-            }
-
-            // =================================================
-            // 4. FREEZER DOOR
-            // =================================================
-
-            RotatingDoor door =
-                hit.collider.GetComponentInParent<RotatingDoor>();
-
-            if (door != null)
-            {
-                Debug.Log("比讚 → 冷凍庫門");
-
-                door.OpenFromGesture();
-
-                return;
-            }
-            // =================================================
-            // 5.fUSE BOX
-            // =================================================
-            FuseBoxController fuseBox =
-                hit.collider.GetComponentInParent<FuseBoxController>();
-
-            if (fuseBox != null)
-            {
-                Debug.Log("比讚 → 電箱");
-
-                fuseBox.ActivateFuseBox();
-
-                lastInteractTime = Time.time;
-
-                return;
-            }
-            /*
-            // =================================================
-            // 5. FUSE SLOT
-            // =================================================
-
-            FuseSlot fuseSlot =
-                hit.collider.GetComponentInParent<FuseSlot>();
-
-            if (fuseSlot != null)
-            {
-                Debug.Log("比讚 → 保險絲插槽");
-
-                fuseSlot.InsertFuse();
-
-                lastInteractTime = Time.time;
-
-                return;
-            }*/
-            // =================================================
-            // 6. LEVER
-            // =================================================
-
-            // 冷凍庫拉桿
-            lever_controller lever =
-                hit.collider.GetComponent<lever_controller>();
-
-            if (lever == null)
-            {
-                lever =
-                    hit.collider.GetComponentInParent<lever_controller>();
-            }
-
-            if (lever != null)
-            {
-                Debug.Log(
-                    "操作冷凍庫拉桿：" +
-                    lever.gameObject.name
-                );
-
-                lever.ToggleLever();
-
-                lastInteractTime = Time.time;
-
-                return;
-            }
-
-
-            // 大門拉桿
-            GateLeverController gateLever =
-                hit.collider.GetComponent<GateLeverController>();
-
-            if (gateLever == null)
-            {
-                gateLever =
-                    hit.collider.GetComponentInParent<GateLeverController>();
-            }
-
-            if (gateLever != null)
-            {
-                Debug.Log(
-                    "操作大門拉桿：" +
-                    gateLever.gameObject.name
-                );
-
-                gateLever.ToggleLever();
-
-                lastInteractTime = Time.time;
-
-                return;
-            }
-
-
-            // =================================================
-            // 7. PICKABLE ITEM
-            // =================================================
-
-            if (hit.collider.CompareTag("Pickable"))
-            {
-                backpackitem item =
-                    hit.collider.GetComponentInParent<backpackitem>();
-
-
-                if (item != null)
-                {
-                    // Make sure backpack is assigned
-                    if (playerBackpack == null)
-                    {
-                        Debug.LogWarning(
-                            "Player Backpack is not assigned!"
-                        );
-
-                        return;
-                    }
-
-                    Debug.Log(
-                        "準備加入背包：" +
-                        item.itemName +
-                        " | Icon：" +
-                        item.itemIcon
-                    );
-                    // Try adding item to backpack
-                    bool added =
-                        playerBackpack.AddItem(
-                            item.itemName,
-                            item.itemIcon
-                        );
-
-
-                    if (added)
-                    {
-                        Debug.Log("撿起物品：" + item.itemName);
-
-                        // 如果撿到的是紫光手電筒
-                        if (item.itemName == "flashlight")
-                        {
-                            // 白光關閉
-                            if (flashlight_ != null)
-                                flashlight_.SetActive(false);
-
-                            // 紫光手電筒顯示
-                            if (flashlight_uv_copy != null)
-                                flashlight_uv_copy.SetActive(true);
-
-                            // 自動選擇 Slot 1
-                            if (playerBackpack != null)
-                                playerBackpack.SelectSlot(1);
-
-                            Debug.Log("已切換到紫光手電筒！");
-                        }
-
-                        Destroy(item.gameObject);
-                        lastInteractTime = Time.time;
-                    }
-                    else
-                    {
-                        Debug.Log(
-                            "背包已滿，無法撿取：" +
-                            item.itemName
-                        );
-                    }
-
-
-                    return;
-                }
-
-
-                Debug.LogWarning(
-                    "This Pickable object does not have a backpackitem component: " +
-                    hit.collider.gameObject.name
-                );
-
-
-                return;
-            }
-
-
-            Debug.Log(
-                "看到東西，但不能互動：" +
-                hit.collider.gameObject.name
-            );
+            Destroy(item.gameObject);
+            lastInteractTime = Time.time;
         }
         else
         {
-            Debug.Log(
-                "揮空了，眼前沒東西。"
-            );
+            Debug.Log("背包已滿，無法撿取：" + item.itemName);
         }
+
+        return;
     }
+
+    // =========================================
+    // 10. 其他物件
+    // =========================================
+    Debug.Log("看到東西，但不能互動：" + hit.collider.gameObject.name);
+}
+
 
     // =========================================================
     // INVENTORY SLOT
